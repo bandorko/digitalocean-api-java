@@ -20,9 +20,6 @@
  */
 package com.myjeeva.digitalocean.common;
 
-import org.apache.http.HttpHeaders;
-
-
 /**
  * DigitalOcean API client Constants
  * 
@@ -55,8 +52,8 @@ public interface Constants {
 
   // HTTP Headers
   String HDR_USER_AGENT = "X-User-Agent";
-  String HDR_CONTENT_TYPE = HttpHeaders.CONTENT_TYPE;
-  String HDR_AUTHORIZATION = HttpHeaders.AUTHORIZATION;
+  String HDR_CONTENT_TYPE = "Content-Type";
+  String HDR_AUTHORIZATION = "Athorization";
   String HDR_RATE_LIMIT = "RateLimit-Limit";
   String HDR_RATE_REMAINING = "RateLimit-Remaining";
   String HDR_RATE_RESET = "RateLimit-Reset";

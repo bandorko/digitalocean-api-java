@@ -20,6 +20,7 @@
  */
 package com.myjeeva.digitalocean.impl;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.URI;
@@ -27,31 +28,35 @@ import java.net.URISyntaxException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.http.Header;
 import org.apache.http.HttpEntity;
-import org.apache.http.HttpHeaders;
-import org.apache.http.HttpResponse;
 import org.apache.http.HttpStatus;
 import org.apache.http.ParseException;
 import org.apache.http.client.HttpClient;
-import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpDelete;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.client.methods.HttpPut;
 import org.apache.http.client.methods.HttpUriRequest;
-import org.apache.http.client.utils.URIBuilder;
 import org.apache.http.entity.StringEntity;
-import org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.http.impl.client.HttpClients;
 import org.apache.http.message.BasicHeader;
 import org.apache.http.util.EntityUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.api.client.http.ByteArrayContent;
+import com.google.api.client.http.GenericUrl;
+import com.google.api.client.http.HttpContent;
+import com.google.api.client.http.HttpHeaders;
+import com.google.api.client.http.HttpRequest;
+import com.google.api.client.http.HttpRequestFactory;
+import com.google.api.client.http.HttpResponse;
+import com.google.api.client.http.HttpTransport;
+import com.google.api.client.util.IOUtils;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
@@ -101,10 +106,15 @@ public class DigitalOceanClient implements DigitalOcean, Constants {
   private final Logger LOG = LoggerFactory.getLogger(DigitalOceanClient.class);
 
   /**
-   * Http client
+   * HttpTransport
    */
-  protected CloseableHttpClient httpClient;
+  protected HttpTransport httpTransport;
 
+  /**
+   * HttpReqestFactory
+   */
+  protected HttpRequestFactory httpReqestFactory;
+  
   /**
    * OAuth Authorization Token for Accessing DigitalOcean API
    */
@@ -138,7 +148,7 @@ public class DigitalOceanClient implements DigitalOcean, Constants {
   /**
    * API Request Header
    */
-  private Header[] requestHeaders;
+  private HttpHeaders requestHeaders;
 
   /**
    * DigitalOcean Client Constructor
@@ -166,7 +176,7 @@ public class DigitalOceanClient implements DigitalOcean, Constants {
    * @param authToken a {@link String} object
    * @param httpClient a {@link CloseableHttpClient} object
    */
-  public DigitalOceanClient(String apiVersion, String authToken, CloseableHttpClient httpClient) {
+  public DigitalOceanClient(String apiVersion, String authToken, HttpTransport httpTransport) {
 
     if (!"v2".equalsIgnoreCase(apiVersion)) {
       throw new IllegalArgumentException("Only API version 2 is supported.");
@@ -174,22 +184,8 @@ public class DigitalOceanClient implements DigitalOcean, Constants {
 
     this.apiVersion = apiVersion;
     this.authToken = authToken;
-    this.httpClient = httpClient;
+    this.httpTransport = httpTransport;
     initialize();
-  }
-
-  /**
-   * @return the httpClient
-   */
-  public HttpClient getHttpClient() {
-    return httpClient;
-  }
-
-  /**
-   * @param httpClient the httpClient to set
-   */
-  public void setHttpClient(CloseableHttpClient httpClient) {
-    this.httpClient = httpClient;
   }
 
   /**
@@ -978,17 +974,17 @@ public class DigitalOceanClient implements DigitalOcean, Constants {
   private ApiResponse perform(ApiRequest request) throws DigitalOceanException,
       RequestUnsuccessfulException {
 
-    URI uri = createUri(request);
+    GenericUrl url = createUrl(request);
     String response = null;
 
     if (RequestMethod.GET == request.getMethod()) {
-      response = doGet(uri);
+      response = doGet(url);
     } else if (RequestMethod.POST == request.getMethod()) {
-      response = doPost(uri, createRequestData(request));
+      response = doPost(url, createRequestData(request));
     } else if (RequestMethod.PUT == request.getMethod()) {
-      response = doPut(uri, createRequestData(request));
+      response = doPut(url, createRequestData(request));
     } else if (RequestMethod.DELETE == request.getMethod()) {
-      response = doDelete(uri);
+      response = doDelete(url);
     }
 
     ApiResponse apiResponse = new ApiResponse(request.getApiAction(), true);
@@ -1012,74 +1008,46 @@ public class DigitalOceanClient implements DigitalOcean, Constants {
     return apiResponse;
   }
 
-  private String doGet(URI uri) throws DigitalOceanException, RequestUnsuccessfulException {
-    HttpGet get = new HttpGet(uri);
-    get.setHeaders(requestHeaders);
-    return executeHttpRequest(get);
+  private String doGet(GenericUrl url) throws DigitalOceanException, RequestUnsuccessfulException {
+	  try{
+		  HttpRequest get = httpReqestFactory.buildGetRequest(url);
+		  return get.setHeaders(requestHeaders).execute().parseAsString();
+	  }catch(IOException e){
+		  throw new RequestUnsuccessfulException("IOException in google client",e);
+	  }
   }
 
-  private String doPost(URI uri, HttpEntity entity) throws DigitalOceanException,
+  private String doPost(GenericUrl url, HttpContent content) throws DigitalOceanException, RequestUnsuccessfulException {
+	  try{
+		  HttpRequest post = httpReqestFactory.buildPostRequest(url, content);
+		  return post.setHeaders(requestHeaders).execute().parseAsString();
+	  }catch(IOException e){
+		  throw new RequestUnsuccessfulException("IOException in google client",e);
+	  }
+  }
+
+  private String doPut(GenericUrl url, HttpContent content) throws DigitalOceanException,
       RequestUnsuccessfulException {
-    HttpPost post = new HttpPost(uri);
-    post.setHeaders(requestHeaders);
-
-    if (null != entity) {
-      post.setEntity(entity);
-    }
-
-    return executeHttpRequest(post);
+	  try{
+		  HttpRequest put = httpReqestFactory.buildPutRequest(url, content);
+		  return put.setHeaders(requestHeaders).execute().parseAsString();
+	  }catch(IOException e){
+		  throw new RequestUnsuccessfulException("IOException in google client",e);
+	  }
   }
 
-  private String doPut(URI uri, HttpEntity entity) throws DigitalOceanException,
-      RequestUnsuccessfulException {
-    HttpPut put = new HttpPut(uri);
-    put.setHeaders(requestHeaders);
-
-    if (null != entity) {
-      put.setEntity(entity);
-    }
-
-    return executeHttpRequest(put);
+  private String doDelete(GenericUrl url) throws DigitalOceanException, RequestUnsuccessfulException {
+	  try{
+		  HttpRequest delete = httpReqestFactory.buildDeleteRequest(url);
+		  return delete.setHeaders(requestHeaders).execute().parseAsString();
+	  }catch(IOException e){
+		  throw new RequestUnsuccessfulException("IOException in google client",e);
+	  }
   }
 
-  private String doDelete(URI uri) throws DigitalOceanException, RequestUnsuccessfulException {
-    HttpDelete delete = new HttpDelete(uri);
-    delete.setHeaders(requestHeaders);
-    delete.setHeader(HttpHeaders.CONTENT_TYPE, FORM_URLENCODED_CONTENT_TYPE);
-    return executeHttpRequest(delete);
-  }
-
-  private String executeHttpRequest(HttpUriRequest request) throws DigitalOceanException,
-      RequestUnsuccessfulException {
-    String response = "";
-    CloseableHttpResponse httpResponse = null;
-    try {
-      httpResponse = httpClient.execute(request);
-      LOG.debug("HTTP Response Object:: " + httpResponse);
-
-      response = appendRateLimitValues(evaluateResponse(httpResponse), httpResponse);
-      LOG.debug("Parsed Response:: " + response);
-    } catch (IOException ioe) {
-      throw new RequestUnsuccessfulException(ioe.getMessage(), ioe);
-    } finally {
-      try {
-        if (null != httpResponse) {
-          httpResponse.close();
-        }
-      } catch (IOException e) {
-        // Ignoring close exception, really no impact.
-        // Since response object is 99.999999% success rate
-        // this is nothing to do with DigitalOcean, its
-        // typical handling of HttpClient request/response
-        LOG.error("Error occurred while closing a response.", e);
-      }
-    }
-
-    return response;
-  }
 
   private String evaluateResponse(HttpResponse httpResponse) throws DigitalOceanException {
-    int statusCode = httpResponse.getStatusLine().getStatusCode();
+    int statusCode = httpResponse.getStatusCode();
     String response = "";
 
     if (HttpStatus.SC_OK == statusCode || HttpStatus.SC_CREATED == statusCode
@@ -1120,50 +1088,47 @@ public class DigitalOceanClient implements DigitalOcean, Constants {
 
   private String httpResponseToString(HttpResponse httpResponse) {
     String response = StringUtils.EMPTY;
-    if (null != httpResponse.getEntity()) {
-      try {
-        response = EntityUtils.toString(httpResponse.getEntity(), UTF_8);
-      } catch (ParseException pe) {
-        LOG.error(pe.getMessage(), pe);
-      } catch (IOException ioe) {
-        LOG.error(ioe.getMessage(), ioe);
-      }
-    }
+    try {
+	    if (null != httpResponse.getContent()) {
+	    	  ByteArrayOutputStream baos = new ByteArrayOutputStream();
+	    	  IOUtils.copy(httpResponse.getContent(), baos);
+	    	  response = baos.toString("UTF-8"); 
+	    }
+    } catch (ParseException pe) {
+	    LOG.error(pe.getMessage(), pe);
+	  } catch (IOException ioe) {
+	    LOG.error(ioe.getMessage(), ioe);
+	  }
     return response;
   }
 
-  private URI createUri(ApiRequest request) {
-    URIBuilder ub = new URIBuilder();
-    ub.setScheme(HTTPS_SCHEME);
-    ub.setHost(apiHost);
-    ub.setPath(createPath(request));
+  private GenericUrl createUrl(ApiRequest request) {
+	  GenericUrl url = new GenericUrl();
+    url.setScheme(HTTPS_SCHEME);
+    url.setHost(apiHost);
+    url.setPathParts(GenericUrl.toPathParts(createPath(request)));
+    
 
     if (null != request.getPageNo()) {
-      ub.setParameter(PARAM_PAGE_NO, request.getPageNo().toString());
+      url.put(PARAM_PAGE_NO, request.getPageNo().toString());
     }
 
     if (RequestMethod.GET == request.getMethod()) {
       if (null == request.getPerPage()) {
-        ub.setParameter(PARAM_PER_PAGE, "25"); // As per DO documentation
+        url.put(PARAM_PER_PAGE, "25"); // As per DO documentation
       } else {
-        ub.setParameter(PARAM_PER_PAGE, request.getPerPage().toString());
+        url.put(PARAM_PER_PAGE, request.getPerPage().toString());
       }
     }
 
     if (null != request.getQueryParams()) {
       for (Map.Entry<String, String> entry : request.getQueryParams().entrySet()) {
-        ub.setParameter(entry.getKey(), entry.getValue());
+        url.put(entry.getKey(), entry.getValue());
       }
     }
 
-    URI uri = null;
-    try {
-      uri = ub.build();
-    } catch (URISyntaxException use) {
-      LOG.error(use.getMessage(), use);
-    }
 
-    return uri;
+    return url;
   }
 
   private String createPath(ApiRequest request) {
@@ -1171,17 +1136,12 @@ public class DigitalOceanClient implements DigitalOcean, Constants {
     return (null == request.getPathParams() ? path : String.format(path, request.getPathParams()));
   }
 
-  private HttpEntity createRequestData(ApiRequest request) {
-    StringEntity data = null;
+  private HttpContent createRequestData(ApiRequest request) {
+	  HttpContent data = null;
 
     if (null != request.getData()) {
       String inputData = serialize.toJson(request.getData());
-
-      try {
-        data = new StringEntity(inputData);
-      } catch (UnsupportedEncodingException e) {
-        LOG.error(e.getMessage(), e);
-      }
+      data = new ByteArrayContent(JSON_CONTENT_TYPE,inputData.getBytes());
     }
 
     return data;
@@ -1223,9 +1183,10 @@ public class DigitalOceanClient implements DigitalOcean, Constants {
     }
 
     if (first) {
-      value = httpResponse.getFirstHeader(header).getValue();
+      value = httpResponse.getHeaders().getFirstHeaderStringValue(header);
     } else {
-      value = httpResponse.getLastHeader(header).getValue();
+      List<String> headerValues = httpResponse.getHeaders().getHeaderStringValues(header);
+      value = headerValues.get(headerValues.size()-1);
     }
 
     return value;
@@ -1279,16 +1240,19 @@ public class DigitalOceanClient implements DigitalOcean, Constants {
 
     this.jsonParser = new JsonParser();
 
-    Header[] headers =
-        {new BasicHeader(HDR_USER_AGENT, USER_AGENT),
-            new BasicHeader(HDR_CONTENT_TYPE, JSON_CONTENT_TYPE),
-            new BasicHeader(HDR_AUTHORIZATION, "Bearer " + authToken)};
+    
+    HttpHeaders headers = new HttpHeaders();
+    headers.put(HDR_USER_AGENT, USER_AGENT);
+    headers.put(HDR_CONTENT_TYPE, JSON_CONTENT_TYPE);
+    headers.put(HDR_AUTHORIZATION, "Bearer " + authToken);
+    
     LOG.debug("API Request Headers:: " + headers);
 
     this.requestHeaders = headers;
 
-    if (null == this.httpClient) {
+    httpReqestFactory = httpTransport.createRequestFactory();
+/*    if (null == this.httpClient) {
       this.httpClient = HttpClients.createDefault();
-    }
+    }*/
   }
 }
