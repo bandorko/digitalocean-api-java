@@ -26,6 +26,7 @@ import java.io.UnsupportedEncodingException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.text.SimpleDateFormat;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -1243,7 +1244,7 @@ public class DigitalOceanClient implements DigitalOcean, Constants {
     
     HttpHeaders headers = new HttpHeaders();
     headers.put(HDR_USER_AGENT, USER_AGENT);
-    headers.put(HDR_CONTENT_TYPE, JSON_CONTENT_TYPE);
+    headers.put(HDR_CONTENT_TYPE, Arrays.asList(JSON_CONTENT_TYPE));
     headers.put(HDR_AUTHORIZATION, "Bearer " + authToken);
     
     LOG.debug("API Request Headers:: " + headers);
