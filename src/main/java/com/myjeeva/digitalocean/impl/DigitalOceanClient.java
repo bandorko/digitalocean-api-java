@@ -1243,10 +1243,9 @@ public class DigitalOceanClient implements DigitalOcean, Constants {
 
     
     HttpHeaders headers = new HttpHeaders();
-    headers.put(HDR_USER_AGENT, USER_AGENT);
-    headers.put(HDR_CONTENT_TYPE, Arrays.asList(JSON_CONTENT_TYPE));
-    headers.put(HDR_AUTHORIZATION, "Bearer " + authToken);
-    
+    headers.set(HDR_USER_AGENT, Arrays.asList(USER_AGENT));
+    headers.set(HDR_CONTENT_TYPE, Arrays.asList(JSON_CONTENT_TYPE));
+    headers.set(HDR_AUTHORIZATION, Arrays.asList("Bearer " + authToken));
     LOG.debug("API Request Headers:: " + headers);
 
     this.requestHeaders = headers;
